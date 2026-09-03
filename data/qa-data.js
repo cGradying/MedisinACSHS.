@@ -1,4 +1,4 @@
-window.MEDISIN_QA = [
+var MEDISIN_QA = [
 
   {
     id: 'A1',
@@ -622,3 +622,6 @@ Type "hospital near me" and I can help you find the nearest hospital.`
     reply: `You're welcome! Stay safe. Let me know if you need help with anything else.`
   }
 ];
+
+if (typeof window !== 'undefined') window.MEDISIN_QA = MEDISIN_QA;
+if (typeof module !== 'undefined') module.exports = MEDISIN_QA;

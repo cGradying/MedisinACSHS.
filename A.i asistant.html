@@ -97,10 +97,11 @@
 
 <script src="data/qa-data.js"></script>
 <script src="data/hospitals-data.js"></script>
+<script src="data/qa-retrieve.js"></script>
 <script>
 const CHAT_API_URL = '/api/chat';
 
-const USE_LOCAL_MOCK = true;
+const USE_LOCAL_MOCK = false;
 
 const SYSTEM_CONTEXT =
     `You are MedisinACSHS, a helpful AI medical assistant for the ACSHS.
@@ -494,26 +495,7 @@ function resetConversation() {
 
 let awaitingTown = false;
 
-function normalize(str) {
-    return String(str || '')
-        .toLowerCase()
-        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-        .replace(/[^a-z0-9\s]/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-}
-
-const STOPWORDS = new Set([
-    'ang', 'ng', 'ko', 'mo', 'na', 'ba', 'po', 'opo', 'ito', 'yun', 'yung',
-    'ay', 'si', 'ni', 'kay', 'din', 'rin', 'lang', 'naman', 'kasi', 'pa',
-    'raw', 'daw', 'ho', 'oo', 'ka', 'kayo', 'tayo', 'kami', 'sila', 'niya',
-    'nila', 'namin', 'natin', 'doon', 'dito', 'paano', 'pano', 'ano',
-    'sino', 'saan', 'kailan', 'bakit', 'sa',
-    'a', 'an', 'the', 'is', 'are', 'am', 'it', 'to', 'of', 'in', 'on',
-    'and', 'for', 'with', 'my', 'your', 'his', 'her', 'their', 'our',
-    'has', 'have', 'had', 'you', 'i', 'me', 'we', 'do', 'did', 'does',
-    'this', 'that', 'these', 'those', 'be', 'was', 'were'
-]);
+const { normalize, findBestQaMatch: qaFindBestMatch } = window.QaRetrieve;
 
 const HOSPITAL_TRIGGER_WORDS = [
     'hospital', 'ospital', 'clinic', 'locator', 'nearest hospital',
@@ -567,37 +549,8 @@ function buildHospitalReply(canonicalTown, rawTownText) {
     return lines.join('\n');
 }
 
-function scoreEntry(entry, normalizedInput, inputTokens) {
-    let bestPhraseScore = 0;
-    for (const phrase of entry.keywords) {
-        const words = normalize(phrase).split(' ').filter((w) => w && !STOPWORDS.has(w));
-        if (!words.length) continue;
-        const matchedWords = words.filter((w) =>
-            w.length <= 3 ? inputTokens.has(w) : normalizedInput.includes(w)
-        );
-        const phraseScore = matchedWords.length === words.length
-            ? words.length + 1
-            : matchedWords.length * 0.5;
-
-        if (phraseScore > bestPhraseScore) {
-            bestPhraseScore = phraseScore;
-        }
-    }
-    return bestPhraseScore;
-}
-
 function findBestQaMatch(normalizedInput) {
-    const inputTokens = new Set(normalizedInput.split(' ').filter(Boolean));
-    let best = null;
-    let bestScore = 0;
-    for (const entry of (window.MEDISIN_QA || [])) {
-        const score = scoreEntry(entry, normalizedInput, inputTokens);
-        if (score > bestScore) {
-            bestScore = score;
-            best = entry;
-        }
-    }
-    return bestScore >= 1 ? best : null;
+    return qaFindBestMatch(window.MEDISIN_QA || [], normalizedInput);
 }
 
 const FALLBACK_REPLY = `I don't have an exact match for that yet. Could you describe the symptom or injury a bit more? You can also type "hospital near me" to find a nearby hospital. If this feels like an emergency, please call 911 or tell an adult right away.`;
