@@ -101,7 +101,7 @@ ADMIN_TOKEN=my-local-token npm start
 
 enter `my-local-token` on the admin page. The token is kept only in the browser session and is sent as a bearer token to the server.
 
-Uploaded files are converted to text and stored under `data/rag-store/`. That directory is local machine data and is git-ignored; uploaded documents are not pushed to GitHub. Without `ADMIN_TOKEN`, all `/api/admin/*` routes are disabled.
+The built-in medkit reference is stored in `data/rag-defaults/` and is included automatically for every installation. Uploaded files are converted to text and stored under `data/rag-store/`. That directory is local machine data and is git-ignored; uploaded documents are not pushed to GitHub. Without `ADMIN_TOKEN`, all `/api/admin/*` routes are disabled.
 
 Use focused, trustworthy documents such as school-approved first-aid guidance, public-health references, and emergency procedures. Include important warnings, timing, dosage limits, contraindications, and escalation instructions in the source documents. The assistant will refuse to invent an answer when no relevant document content is found.
 
@@ -162,7 +162,7 @@ Exit the interactive model session with `Ctrl-D`; the Ollama service can remain 
 
 **The assistant says it does not have the information**
 
-Open the admin page, confirm a relevant document is uploaded, and ask using words that appear in that document. The RAG system intentionally does not answer from model memory when the uploaded data has no relevant match.
+Open the admin page, confirm a relevant document is uploaded, and ask using words that appear in that document. The built-in medkit inventory is always available; additional documents are loaded from `data/rag-store/`. The RAG system intentionally does not answer from model memory when the uploaded data has no relevant match.
 
 ## Development
 
@@ -173,7 +173,7 @@ npm install
 ADMIN_TOKEN=dev-token npm start
 ```
 
-The browser assistant is `A.i asistant.html`. Server chat and admin routes are in `server.js`; document extraction, chunking, indexing, and retrieval are in `data/rag.js`. The local RAG manifest and extracted documents live in `data/rag-store/`.
+The browser assistant is `A.i asistant.html`. Server chat and admin routes are in `server.js`; document extraction, chunking, indexing, and retrieval are in `data/rag.js`. The built-in RAG references live in `data/rag-defaults/`; the local RAG manifest and extracted uploads live in `data/rag-store/`.
 
 There is no build step. After editing HTML, CSS, or JavaScript, refresh the browser. After editing `server.js` or `data/rag.js`, restart Node.
 

@@ -11,6 +11,7 @@ const crypto = require('crypto');
 // so these files 404 through the static route — not directly fetchable.
 // Don't add .txt or .json to that allowlist without moving this store first.
 const STORE_DIR = path.join(__dirname, 'rag-store');
+const DEFAULT_DIR = path.join(__dirname, 'rag-defaults');
 const MANIFEST_PATH = path.join(STORE_DIR, 'manifest.json');
 const ALLOWED_EXT = new Set(['.txt', '.md', '.pdf']);
 const CHUNK_SIZE = 900;
@@ -144,6 +145,25 @@ let indexCache = { signature: '', chunks: [] };
 
 function buildIndex(manifest) {
     const chunks = [];
+    const defaultFiles = fs.existsSync(DEFAULT_DIR)
+        ? fs.readdirSync(DEFAULT_DIR).filter((name) => ALLOWED_EXT.has(path.extname(name).toLowerCase()))
+        : [];
+    for (const filename of defaultFiles) {
+        const filePath = path.join(DEFAULT_DIR, filename);
+        let text;
+        try { text = fs.readFileSync(filePath, 'utf8'); }
+        catch { continue; }
+
+        for (const chunk of chunkText(text)) {
+            chunks.push({
+                tokens: new Set(normalize(chunk).split(' ').filter(Boolean)),
+                text: chunk,
+                source: filename,
+                isDefault: true
+            });
+        }
+    }
+
     for (const [id, meta] of Object.entries(manifest)) {
         const filePath = path.join(STORE_DIR, `${id}.txt`);
         let text;
@@ -167,7 +187,16 @@ function topChunks(query, n) {
     if (queryTokens.size === 0) return [];
 
     const manifest = readManifest();
-    const signature = JSON.stringify(Object.entries(manifest).map(([id, meta]) => [id, meta.chars, meta.uploadedAt]));
+    const defaultSignature = fs.existsSync(DEFAULT_DIR)
+        ? fs.readdirSync(DEFAULT_DIR).map((name) => {
+            const filePath = path.join(DEFAULT_DIR, name);
+            return [name, fs.statSync(filePath).mtimeMs];
+        })
+        : [];
+    const signature = JSON.stringify({
+        defaults: defaultSignature,
+        uploads: Object.entries(manifest).map(([id, meta]) => [id, meta.chars, meta.uploadedAt])
+    });
     if (indexCache.signature !== signature) {
         indexCache = { signature, chunks: buildIndex(manifest) };
     }

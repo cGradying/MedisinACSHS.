@@ -42,7 +42,7 @@
             </div>
 
             <div class="assistant-actions" aria-label="Conversation controls">
-                <button class="header-btn" id="toggle-voice-playback" type="button" title="Turn voice replies on" aria-label="Turn voice replies on" aria-pressed="false">
+                <button class="header-btn" id="toggle-voice-playback" type="button" title="Voice replies are disabled" aria-label="Voice replies are disabled" aria-pressed="false" disabled>
                     <svg viewBox="0 0 24 24" aria-hidden="true">
                         <path d="M11 5 6 9H3v6h3l5 4z"></path>
                         <path d="M15.5 8.5a5 5 0 0 1 0 7"></path>
@@ -204,20 +204,11 @@ function updateVoicePlaybackButton() {
         return;
     }
 
-    if (!synthesisSupported) {
-        voicePlaybackBtn.disabled = true;
-        voicePlaybackBtn.title = 'Voice replies are not supported in this browser';
-        voicePlaybackBtn.setAttribute('aria-label', 'Voice replies are not supported in this browser');
-        voicePlaybackBtn.setAttribute('aria-pressed', 'false');
-        return;
-    }
-
-    const title = autoSpeakReplies ? 'Turn voice replies off' : 'Turn voice replies on';
-    voicePlaybackBtn.disabled = false;
-    voicePlaybackBtn.title = title;
-    voicePlaybackBtn.setAttribute('aria-label', title);
-    voicePlaybackBtn.setAttribute('aria-pressed', String(autoSpeakReplies));
-    voicePlaybackBtn.classList.toggle('is-muted', !autoSpeakReplies);
+    voicePlaybackBtn.disabled = true;
+    voicePlaybackBtn.title = 'Voice replies are disabled';
+    voicePlaybackBtn.setAttribute('aria-label', 'Voice replies are disabled');
+    voicePlaybackBtn.setAttribute('aria-pressed', 'false');
+    voicePlaybackBtn.classList.add('is-muted');
 }
 
 function updateVoiceInputButton() {
@@ -588,7 +579,13 @@ async function sendToAssistantLive(userText) {
         })
     });
 
-    const data = await response.json();
+    const responseText = await response.text();
+    let data;
+    try {
+        data = responseText ? JSON.parse(responseText) : {};
+    } catch {
+        throw new Error(`The server returned an invalid response (${response.status}). Please restart the server and try again.`);
+    }
 
     if (!response.ok) {
         const detail = data?.error || data?.detail || `Server error ${response.status}`;
@@ -627,7 +624,6 @@ async function handleSend(text) {
         const reply = await sendToAssistant(msg);
         hideTyping();
         addAssistantMessage(reply);
-        speakReply(reply);
     } catch (err) {
         hideTyping();
         addAssistantMessage(`Sorry, something went wrong: ${err.message}`);
