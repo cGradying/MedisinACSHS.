@@ -94,12 +94,47 @@ function isCrisisMessage(userText) {
         && /\b(myself|my self|me|my life|dead|die|dying)\b/.test(normalized);
 }
 
+const INTENT_TERMS = {
+    emergency: ['emergency', 'urgent', '911', 'unconscious', 'not breathing', 'cannot breathe', 'can t breathe', 'chest pain', 'severe bleeding', 'heavy bleeding', 'stroke'],
+    emotional_support: ['sad', 'scared', 'afraid', 'anxious', 'anxiety', 'overwhelmed', 'alone', 'lonely', 'upset', 'stressed', 'crying', 'grief', 'worried', 'panic'],
+    wound_care: ['wound', 'cut', 'scrape', 'bleeding', 'blood', 'gauze', 'bandage', 'antiseptic', 'saline', 'splinter'],
+    burn_care: ['burn', 'scald', 'hot water', 'chemical burn', 'electrical burn', 'non stick dressing'],
+    injury_support: ['sprain', 'strain', 'swelling', 'swollen', 'bruise', 'bump', 'cold pack', 'cold compress', 'elastic bandage', 'sling'],
+    temperature: ['temperature', 'fever', 'thermometer', 'mainit ang katawan', 'lagnat'],
+    hygiene: ['hand hygiene', 'sanitize', 'sanitizer', 'gloves', 'mask', 'infection control', 'wash my hands'],
+    cpr: ['cpr', 'rescue breathing', 'face shield', 'cardiopulmonary'],
+    hospital_lookup: ['hospital', 'clinic', 'doctor', 'emergency room', 'nearest', 'malapit na ospital'],
+    medkit_inventory: ['medkit', 'first aid kit', 'first-aid kit', 'what do i need', 'supplies', 'equipment']
+};
+
+const INTENT_EXPANSIONS = {
+    emergency: 'urgent emergency immediate danger call 911 professional help',
+    emotional_support: 'emotional support overwhelmed worried lonely trusted adult counselor',
+    wound_care: 'minor wound cut scrape bleeding gauze bandage clean dressing first aid',
+    burn_care: 'minor burn scald burn dressing non stick dressing first aid',
+    injury_support: 'minor injury sprain swelling bump bruise cold compress elastic bandage support',
+    temperature: 'check body temperature fever digital thermometer',
+    hygiene: 'hand hygiene gloves masks infection control first aid',
+    cpr: 'CPR rescue breathing face shield barrier emergency services',
+    hospital_lookup: 'hospital clinic emergency department healthcare professional nearby',
+    medkit_inventory: 'basic first aid kit inventory supplies purpose use'
+};
+
+function classifyIntent(userText) {
+    const normalized = String(userText).toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+    const scores = Object.entries(INTENT_TERMS).map(([intent, terms]) => [
+        intent,
+        terms.reduce((score, term) => score + (normalized.includes(term) ? (term.includes(' ') ? 2 : 1) : 0), 0)
+    ]).sort((a, b) => b[1] - a[1]);
+    return scores[0][1] ? scores[0][0] : 'general_health';
+}
+
 function buildEmotionalSupportReply(userText) {
     if (isCrisisMessage(userText)) {
         return 'I am sorry you are facing this, and your safety matters. **Are you in immediate danger, or have you already hurt yourself or someone else?**\n\nIf yes, call **911** now, go to the nearest emergency department, and tell a trusted adult who can stay with you. Move away from anything you could use to cause harm and stay with another person.';
     }
 
-    return 'That sounds really difficult. Your feelings matter, and you do not have to handle everything at once.\n\nFor one small next step, move somewhere calmer, take a slow breath, and contact a trusted adult, family member, school counselor, or healthcare professional.\n\n**What feels hardest right now?**';
+    return 'That sounds really difficult. **Do not panic; you do not have to solve everything at once.**\n\nTake one slow breath, relax your shoulders, and focus on one small next step. Be kind to yourself: feeling stressed or anxious does not mean you are failing. If you can, contact a trusted adult, family member, school counselor, or healthcare professional.\n\n**What feels hardest right now?**';
 }
 
 async function handleChat(req, res) {
@@ -120,7 +155,9 @@ async function handleChat(req, res) {
         return sendJson(res, 200, { reply: buildEmotionalSupportReply(lastUserText) });
     }
 
-    const matches = rag.topChunks(lastUserText, 4);
+    const intent = classifyIntent(lastUserText);
+    const retrievalQuery = `${lastUserText} ${INTENT_EXPANSIONS[intent] || ''}`;
+    const matches = rag.topChunks(retrievalQuery, 4);
     const isGreeting = /^(hello|hi|hey)([!?,.\s]|$)/i.test(lastUserText.trim());
     if (!matches.length && !isGreeting) {
         return sendJson(res, 200, {
@@ -138,6 +175,7 @@ async function handleChat(req, res) {
     const prompt = `${systemText}
 
 You are a grounded healthcare information assistant, not a diagnosing clinician.
+Classify the user's goal as ${intent.replace('_', ' ')} and answer only the question they actually asked. Use the retrieved health data as your factual source; the intent is a routing hint, not a source of facts.
 Use the retrieved health data as your factual source. Do not invent, extrapolate, or fill gaps from general model knowledge.
 If the data does not answer the user's question, say so plainly and give only the urgent-safety instruction already provided.
 Give concise, ordered steps when the data supports them. Preserve important warnings, limits, timing, dosages, contraindications, and escalation instructions from the data.
