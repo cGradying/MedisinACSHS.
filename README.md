@@ -13,7 +13,8 @@ as context so answers stay grounded in that data instead of free-generated.
 npm install                # installs pdf-parse (used for PDF uploads)
 ollama pull qwen3.5:0.8b   # falls back to qwen3.5:4b if that tag isn't available
 ollama serve                # skip if already running as a background service
-ADMIN_TOKEN=pick-a-password npm start
+# ADMIN_TOKEN below is a dummy default — change it before real use
+ADMIN_TOKEN=admin123 npm start
 ```
 
 Open `http://localhost:3000`. Env vars: `PORT`, `OLLAMA_MODEL`, `OLLAMA_URL`,
@@ -59,7 +60,8 @@ Type=simple
 User=pi
 WorkingDirectory=/home/pi/MedisinACSHS
 ExecStart=/usr/bin/node server.js
-Environment=ADMIN_TOKEN=pick-a-password
+# ADMIN_TOKEN below is a dummy default — change it before real use
+Environment=ADMIN_TOKEN=admin123
 Environment=PORT=3000
 Restart=on-failure
 RestartSec=3
