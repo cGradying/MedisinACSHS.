@@ -95,13 +95,9 @@
     </div>
 </main>
 
-<script src="data/qa-data.js"></script>
 <script src="data/hospitals-data.js"></script>
-<script src="data/qa-retrieve.js"></script>
 <script>
 const CHAT_API_URL = '/api/chat';
-
-const USE_LOCAL_MOCK = false;
 
 const SYSTEM_CONTEXT =
     `You are MedisinACSHS, a helpful AI medical assistant for the ACSHS.
@@ -495,7 +491,14 @@ function resetConversation() {
 
 let awaitingTown = false;
 
-const { normalize, findBestQaMatch: qaFindBestMatch } = window.QaRetrieve;
+function normalize(str) {
+    return String(str || '')
+        .toLowerCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
 
 const HOSPITAL_TRIGGER_WORDS = [
     'hospital', 'ospital', 'clinic', 'locator', 'nearest hospital',
@@ -549,26 +552,10 @@ function buildHospitalReply(canonicalTown, rawTownText) {
     return lines.join('\n');
 }
 
-function findBestQaMatch(normalizedInput) {
-    return qaFindBestMatch(window.MEDISIN_QA || [], normalizedInput);
-}
-
-const FALLBACK_REPLY = `I don't have an exact match for that yet. Could you describe the symptom or injury a bit more? You can also type "hospital near me" to find a nearby hospital. If this feels like an emergency, please call 911 or tell an adult right away.`;
-
-const GENERIC_SYMPTOM_WORDS = [
-    'sakit', 'masakit', 'pananakit', 'sumasakit', 'nananakit',
-    'hurt', 'hurts', 'pain', 'painful', 'ouch', 'aray'
-];
-
-function isVagueSymptomMention(inputTokens) {
-    return GENERIC_SYMPTOM_WORDS.some((word) => inputTokens.has(normalize(word)));
-}
-
-const VAGUE_SYMPTOM_REPLY = `Where does it hurt specifically, and how much — mild, moderate, or severe? Let me know the exact body part and if there are other symptoms too (like fever, swelling, or bleeding), and I can guide you from there. If the pain is severe or getting worse quickly, please tell an adult and seek medical help right away.`;
-
-function getLocalReply(userText) {
+// Hospital lookup is deterministic data (data/hospitals-data.js), not RAG —
+// answer it instantly client-side instead of round-tripping to the model.
+function tryHospitalReply(userText) {
     const normalizedInput = normalize(userText);
-    const inputTokens = new Set(normalizedInput.split(' ').filter(Boolean));
 
     if (awaitingTown) {
         awaitingTown = false;
@@ -585,25 +572,7 @@ function getLocalReply(userText) {
         return `Sure — which town or city are you nearest to? (e.g., Antipolo, Taytay, Cainta, Angono, Binangonan, Montalban/Rodriguez, San Mateo, Tanay, Pililla)`;
     }
 
-    const match = findBestQaMatch(normalizedInput);
-    if (match) {
-        return match.reply;
-    }
-
-    if (isVagueSymptomMention(inputTokens)) {
-        return VAGUE_SYMPTOM_REPLY;
-    }
-
-    return FALLBACK_REPLY;
-}
-
-function wait(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function sendToAssistantLocal(userText) {
-    await wait(500 + Math.random() * 900);
-    return getLocalReply(userText);
+    return null;
 }
 
 async function sendToAssistantLive(userText) {
@@ -631,7 +600,9 @@ async function sendToAssistantLive(userText) {
 }
 
 async function sendToAssistant(userText) {
-    return USE_LOCAL_MOCK ? sendToAssistantLocal(userText) : sendToAssistantLive(userText);
+    const hospitalReply = tryHospitalReply(userText);
+    if (hospitalReply !== null) return hospitalReply;
+    return sendToAssistantLive(userText);
 }
 
 async function handleSend(text) {

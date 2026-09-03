@@ -1,13 +1,13 @@
 // Standalone static file server + /api/chat, backed by a local Ollama
-// instance instead of a cloud API. RAG: retrieves matching entries from
-// data/qa-data.js and feeds them to the model as context instead of letting
-// it free-generate medical advice.
+// instance instead of a cloud API. RAG: retrieves matching chunks from
+// admin-uploaded documents (data/rag.js) and feeds them to the model as
+// context instead of letting it free-generate medical advice.
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
-const MEDISIN_QA = require('./data/qa-data.js');
-const { topMatches } = require('./data/qa-retrieve.js');
+const rag = require('./data/rag.js');
 
 const PORT = process.env.PORT || 3000;
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434/api/chat';
@@ -16,6 +16,16 @@ const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen3.5:0.8b';
 // Ollama past ~2.9GB. Chat here is short (system prompt + few turns), so a
 // smaller window is plenty and keeps the process under ~1GB.
 const OLLAMA_NUM_CTX = Number(process.env.OLLAMA_NUM_CTX) || 1024;
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
+
+function isAdmin(req) {
+    if (!ADMIN_TOKEN) return false;
+    const header = req.headers['authorization'] || '';
+    const token = header.startsWith('Bearer ') ? header.slice(7) : '';
+    const a = Buffer.from(token);
+    const b = Buffer.from(ADMIN_TOKEN);
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
 
 const MIME = {
     '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css',
@@ -46,23 +56,24 @@ function serveStatic(req, res) {
     });
 }
 
-const MAX_BODY_BYTES = 64 * 1024; // chat messages are short; reject anything absurd
+const MAX_CHAT_BODY_BYTES = 64 * 1024; // chat messages are short
+const MAX_UPLOAD_BODY_BYTES = 20 * 1024 * 1024; // base64 PDF/txt/md, generous but bounded
 
-function readBody(req) {
+function readBody(req, maxBytes) {
     return new Promise((resolve, reject) => {
-        let raw = '';
+        const parts = [];
         let bytes = 0;
         req.on('data', (chunk) => {
             bytes += chunk.length;
-            if (bytes > MAX_BODY_BYTES) {
+            if (bytes > maxBytes) {
                 reject(new Error('Body too large'));
                 req.destroy();
                 return;
             }
-            raw += chunk;
+            parts.push(chunk);
         });
         req.on('end', () => {
-            try { resolve(raw ? JSON.parse(raw) : {}); }
+            try { resolve(parts.length ? JSON.parse(Buffer.concat(parts).toString('utf8')) : {}); }
             catch (e) { reject(e); }
         });
         req.on('error', reject);
@@ -71,7 +82,7 @@ function readBody(req) {
 
 async function handleChat(req, res) {
     let body;
-    try { body = await readBody(req); }
+    try { body = await readBody(req, MAX_CHAT_BODY_BYTES); }
     catch { return res.writeHead(400, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Invalid JSON body' })); }
 
     const { contents, system_instruction } = body;
@@ -83,9 +94,9 @@ async function handleChat(req, res) {
     const lastUserText = [...contents].reverse()
         .find((c) => c?.role !== 'model')?.parts?.map((p) => p?.text || '').join('\n') || '';
 
-    const matches = topMatches(MEDISIN_QA, lastUserText, 3);
+    const matches = rag.topChunks(lastUserText, 3);
     const contextBlock = matches.length
-        ? 'CONTEXT (use this to answer if relevant):\n' + matches.map((m) => `- ${m.reply}`).join('\n')
+        ? 'CONTEXT (use this to answer if relevant):\n' + matches.map((m) => `- ${m.text}`).join('\n')
         : 'CONTEXT: (no matching entry in the health-info dataset)';
 
     const messages = [
@@ -130,8 +141,50 @@ async function handleChat(req, res) {
     }
 }
 
+function sendJson(res, status, body) {
+    res.writeHead(status, { 'Content-Type': 'application/json' }).end(JSON.stringify(body));
+}
+
+// Admin: manage the RAG document store. Auth: `Authorization: Bearer <ADMIN_TOKEN>`.
+// Upload is JSON {filename, contentBase64} rather than multipart — avoids
+// pulling in a multipart-parsing dependency for one form field.
+async function handleAdmin(req, res, url) {
+    if (!ADMIN_TOKEN) return sendJson(res, 503, { error: 'ADMIN_TOKEN not set on the server — admin routes disabled' });
+    if (!isAdmin(req)) return sendJson(res, 401, { error: 'Invalid or missing admin token' });
+
+    if (req.method === 'GET' && url.pathname === '/api/admin/docs') {
+        return sendJson(res, 200, { docs: rag.listDocs() });
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/admin/docs') {
+        let body;
+        try { body = await readBody(req, MAX_UPLOAD_BODY_BYTES); }
+        catch (e) { return sendJson(res, 400, { error: e.message === 'Body too large' ? 'File too large' : 'Invalid JSON body' }); }
+
+        const { filename, contentBase64 } = body;
+        if (!filename || !contentBase64) return sendJson(res, 400, { error: 'filename and contentBase64 required' });
+
+        try {
+            const doc = await rag.saveDoc(filename, Buffer.from(contentBase64, 'base64'));
+            return sendJson(res, 200, { doc });
+        } catch (e) {
+            return sendJson(res, 400, { error: e.message });
+        }
+    }
+
+    if (req.method === 'DELETE' && url.pathname === '/api/admin/docs') {
+        const id = url.searchParams.get('id') || '';
+        const ok = rag.deleteDoc(id);
+        return sendJson(res, ok ? 200 : 404, ok ? { deleted: id } : { error: 'Document not found' });
+    }
+
+    sendJson(res, 404, { error: 'Not found' });
+}
+
 const server = http.createServer((req, res) => {
-    if (req.url === '/api/chat' && req.method === 'POST') return handleChat(req, res);
+    const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    if (url.pathname === '/api/chat' && req.method === 'POST') return handleChat(req, res);
+    if (url.pathname.startsWith('/api/admin/')) return handleAdmin(req, res, url);
     if (req.method === 'GET') return serveStatic(req, res);
     res.writeHead(405).end('Method not allowed');
 });
@@ -139,4 +192,5 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, () => {
     console.log(`MedisinACSHS running at http://localhost:${PORT}`);
     console.log(`Chat backed by Ollama model "${OLLAMA_MODEL}" at ${OLLAMA_URL}`);
+    console.log(ADMIN_TOKEN ? `Admin panel at http://localhost:${PORT}/admin.html` : 'ADMIN_TOKEN not set — admin panel disabled');
 });

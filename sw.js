@@ -1,4 +1,4 @@
-const CACHE_NAME = 'medisinacshs-shell-v1';
+const CACHE_NAME = 'medisinacshs-shell-v2';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -10,7 +10,6 @@ const STATIC_ASSETS = [
   '/icon-white-192.png',
   '/icon-white-512.png',
   '/A.i%20asistant.html',
-  '/data/qa-data.js',
   '/data/hospitals-data.js'
 ];
 
