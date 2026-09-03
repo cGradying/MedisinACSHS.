@@ -82,10 +82,12 @@ function readBody(req, maxBytes) {
     });
 }
 
+function isCrisisMessage(userText) {
+    return /\b(suicide|suicidal|kill myself|self harm|self-harm|hurt myself|hurt someone|want to die|wants to die|end my life|don't want to live|do not want to live)\b/i.test(userText);
+}
+
 function buildEmotionalSupportReply(userText) {
-    const normalized = userText.toLowerCase();
-    const crisis = /\b(suicide|suicidal|kill myself|self harm|self-harm|hurt myself|hurt someone|end my life|don't want to live)\b/.test(normalized);
-    if (crisis) {
+    if (isCrisisMessage(userText)) {
         return 'I am sorry you are facing this, and your safety matters. **Are you in immediate danger, or have you already hurt yourself or someone else?**\n\nIf yes, call **911** now, go to the nearest emergency department, and tell a trusted adult who can stay with you. Move away from anything you could use to cause harm and stay with another person.';
     }
 
@@ -105,6 +107,10 @@ async function handleChat(req, res) {
     const systemText = (system_instruction?.parts?.[0]?.text || '').trim();
     const lastUserText = [...contents].reverse()
         .find((c) => c?.role !== 'model')?.parts?.map((p) => p?.text || '').join('\n') || '';
+
+    if (isCrisisMessage(lastUserText)) {
+        return sendJson(res, 200, { reply: buildEmotionalSupportReply(lastUserText) });
+    }
 
     const matches = rag.topChunks(lastUserText, 4);
     const isGreeting = /^(hello|hi|hey)([!?,.\s]|$)/i.test(lastUserText.trim());
