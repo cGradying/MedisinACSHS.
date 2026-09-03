@@ -210,7 +210,7 @@ The repository keeps browser pages at the root because the static server and PWA
 | `data/hospitals-data.js` | Deterministic hospital directory used by the assistant |
 | `css/` | Page-specific stylesheets |
 | `hotlines/` | Emergency hotline pages |
-| `sw.js`, `pwa-register.js`, `manifest.webmanifest` | PWA caching and installation |
+| `sw.js`, `assets/js/pwa-register.js`, `manifest.webmanifest` | PWA caching and installation |
 
 Keep new shared browser data in `data/`, page styles in `css/`, and new static feature pages at the root unless the relative links and service-worker asset list are updated together.
 
