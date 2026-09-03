@@ -83,7 +83,15 @@ function readBody(req, maxBytes) {
 }
 
 function isCrisisMessage(userText) {
-    return /\b(suicide|suicidal|kill myself|self harm|self-harm|hurt myself|hurt someone|want to die|wants to die|end my life|don't want to live|do not want to live)\b/i.test(userText);
+    const normalized = String(userText)
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    if (/\b(suicide|suicidal|self harm|kms|kys)\b/.test(normalized)) return true;
+    if (/\b(kill\s+my\s*self|hurt\s+my\s*self|end\s+my\s+life|don't\s+want\s+to\s+live|do\s+not\s+want\s+to\s+live)\b/.test(normalized)) return true;
+    return /\b(want|wants|wanted|wanna|thinking about|thinking of|plan to|planning to|going to|feel like)\b.{0,32}\b(die|dying|kill|killing|hurt|ending)\b/.test(normalized)
+        && /\b(myself|my self|me|my life|dead|die|dying)\b/.test(normalized);
 }
 
 function buildEmotionalSupportReply(userText) {
