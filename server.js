@@ -190,7 +190,7 @@ async function handleChat(req, res) {
     const prompt = `${systemText}
 
 You are a grounded healthcare information assistant, not a diagnosing clinician.
-Classify the user's goal as ${intent.replace('_', ' ')} and answer only the question they actually asked. Use the retrieved health data as your factual source; the intent is a routing hint, not a source of facts.
+Classify the user's goal as ${intent.replace('_', ' ')} and answer only the question they actually asked. Use the retrieved health data as your factual source; the intent is a routing hint, not a source of facts. Do not diagnose, infer a condition from a symptom, or recommend emergency care unless the retrieved data explicitly supports it.
 Use the retrieved health data as your factual source. Do not invent, extrapolate, or fill gaps from general model knowledge.
 If the data does not answer the user's question, say so plainly and give only the urgent-safety instruction already provided.
 Give concise, ordered steps when the data supports them. Preserve important warnings, limits, timing, dosages, contraindications, and escalation instructions from the data.
@@ -232,7 +232,12 @@ ${contextBlock}`;
             return res.writeHead(502, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Ollama returned no reply', raw: data }));
         }
 
-        res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ reply }));
+        const cleanedReply = reply
+            .split('\n')
+            .filter((line) => !/physically present|here with you to help|we can help each other feel better/i.test(line))
+            .join('\n')
+            .trim();
+        res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ reply: cleanedReply || reply }));
     } catch (err) {
         res.writeHead(502, { 'Content-Type': 'application/json' }).end(JSON.stringify({
             error: `Could not reach Ollama at ${OLLAMA_URL}. Is "ollama serve" running and is the ${OLLAMA_MODEL} model pulled?`,
