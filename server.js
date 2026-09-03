@@ -96,10 +96,10 @@ function isCrisisMessage(userText) {
 
 const INTENT_TERMS = {
     emergency: ['emergency', 'urgent', '911', 'unconscious', 'not breathing', 'cannot breathe', 'can t breathe', 'chest pain', 'severe bleeding', 'heavy bleeding', 'stroke'],
-    emotional_support: ['sad', 'scared', 'afraid', 'anxious', 'anxiety', 'overwhelmed', 'alone', 'lonely', 'upset', 'stressed', 'crying', 'grief', 'worried', 'panic'],
+    emotional_support: ['sad', 'scared', 'afraid', 'anxious', 'anxiety', 'overwhelmed', 'alone', 'lonely', 'upset', 'stressed', 'crying', 'grief', 'worried', 'panic', 'too much', 'everything on me', 'pressure', 'can t cope', 'need support', 'talk to me', 'can you talk', 'listen to me', 'emotional support'],
     wound_care: ['wound', 'cut', 'scrape', 'bleeding', 'blood', 'gauze', 'bandage', 'antiseptic', 'saline', 'splinter'],
     burn_care: ['burn', 'scald', 'hot water', 'chemical burn', 'electrical burn', 'non stick dressing'],
-    injury_support: ['sprain', 'strain', 'swelling', 'swollen', 'bruise', 'bump', 'cold pack', 'cold compress', 'elastic bandage', 'sling'],
+    injury_support: ['sprain', 'strain', 'swelling', 'swollen', 'puffy', 'twisted ankle', 'turned ankle', 'hurt ankle', 'bruise', 'bump', 'cold pack', 'cold compress', 'elastic bandage', 'sling'],
     temperature: ['temperature', 'fever', 'thermometer', 'mainit ang katawan', 'lagnat'],
     hygiene: ['hand hygiene', 'sanitize', 'sanitizer', 'gloves', 'mask', 'infection control', 'wash my hands'],
     cpr: ['cpr', 'rescue breathing', 'face shield', 'cardiopulmonary'],
@@ -129,12 +129,23 @@ function classifyIntent(userText) {
     return scores[0][1] ? scores[0][0] : 'general_health';
 }
 
-function buildEmotionalSupportReply(userText) {
+function buildEmotionalSupportReply(userText, history = []) {
     if (isCrisisMessage(userText)) {
         return 'I am sorry you are facing this, and your safety matters. **Are you in immediate danger, or have you already hurt yourself or someone else?**\n\nIf yes, call **911** now, go to the nearest emergency department, and tell a trusted adult who can stay with you. Move away from anything you could use to cause harm and stay with another person.';
     }
 
-    return 'That sounds really difficult. **Do not panic; you do not have to solve everything at once.**\n\nTake one slow breath, relax your shoulders, and focus on one small next step. Be kind to yourself: feeling stressed or anxious does not mean you are failing. If you can, contact a trusted adult, family member, school counselor, or healthcare professional.\n\n**What feels hardest right now?**';
+    const cleanedText = userText.trim().replace(/[.!?]+$/, '');
+    const hasFollowedUp = history.some((message) => message.role === 'model');
+    if (/\b(can you talk|talk to me|listen to me)\b/i.test(cleanedText)) {
+        return 'Yes, we can talk. I will listen without judging you. You can start with whatever feels easiest, even if it is only a few words.\n\n**What is happening for you right now?**';
+    }
+    const reflection = cleanedText.length <= 90
+        ? `It sounds like **${cleanedText.toLowerCase()}** is weighing on you.`
+        : 'It sounds like you are carrying a lot right now.';
+    const question = hasFollowedUp
+        ? '**Would it help to talk about what happened, or would you rather focus on calming down first?**'
+        : '**What part of this feels heaviest right now?**';
+    return `${reflection} You do not have to solve everything at once.\n\nTake one slow breath, relax your shoulders, and choose one small next step. Be kind to yourself: feeling stressed or anxious does not mean you are failing. If you can, contact a trusted adult, family member, school counselor, or healthcare professional.\n\n${question}`;
 }
 
 async function handleChat(req, res) {
@@ -152,10 +163,14 @@ async function handleChat(req, res) {
         .find((c) => c?.role !== 'model')?.parts?.map((p) => p?.text || '').join('\n') || '';
 
     if (isCrisisMessage(lastUserText)) {
-        return sendJson(res, 200, { reply: buildEmotionalSupportReply(lastUserText) });
+        return sendJson(res, 200, { reply: buildEmotionalSupportReply(lastUserText, contents) });
     }
 
     const intent = classifyIntent(lastUserText);
+    if (intent === 'emotional_support') {
+        return sendJson(res, 200, { reply: buildEmotionalSupportReply(lastUserText, contents) });
+    }
+
     const retrievalQuery = `${lastUserText} ${INTENT_EXPANSIONS[intent] || ''}`;
     const matches = rag.topChunks(retrievalQuery, 4);
     const isGreeting = /^(hello|hi|hey)([!?,.\s]|$)/i.test(lastUserText.trim());
@@ -166,7 +181,7 @@ async function handleChat(req, res) {
     }
 
     if (matches.some((match) => match.source === 'emotional-support.md') && !isGreeting) {
-        return sendJson(res, 200, { reply: buildEmotionalSupportReply(lastUserText) });
+        return sendJson(res, 200, { reply: buildEmotionalSupportReply(lastUserText, contents) });
     }
 
     const contextBlock = matches.length
