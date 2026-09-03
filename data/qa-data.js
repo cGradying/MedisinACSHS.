@@ -2,7 +2,7 @@ window.MEDISIN_QA = [
 
   {
     id: 'A1',
-    keywords: ['maliit na sugat', 'sugat sa daliri', 'small wound', 'small cut finger', 'minor cut'],
+    keywords: ['maliit na sugat', 'nasugatan ako sa kamay', 'sugat sa daliri', 'small wound', 'small cut finger', 'minor cut'],
     kit: 'Disposable gloves, wound-cleaning/antiseptic product, sterile gauze, adhesive bandage.',
     reply: `For a small wound on your finger:
 - Wash or sanitize your hands.
