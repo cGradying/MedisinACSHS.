@@ -42,7 +42,7 @@
             </div>
 
             <div class="assistant-actions" aria-label="Conversation controls">
-                <button class="header-btn" id="toggle-voice-playback" type="button" title="Turn voice replies off" aria-label="Turn voice replies off" aria-pressed="true">
+                <button class="header-btn" id="toggle-voice-playback" type="button" title="Turn voice replies on" aria-label="Turn voice replies on" aria-pressed="false">
                     <svg viewBox="0 0 24 24" aria-hidden="true">
                         <path d="M11 5 6 9H3v6h3l5 4z"></path>
                         <path d="M15.5 8.5a5 5 0 0 1 0 7"></path>
@@ -102,7 +102,8 @@ const CHAT_API_URL = '/api/chat';
 const SYSTEM_CONTEXT =
     `You are MedisinACSHS, a helpful AI medical assistant for the ACSHS.
 Keep responses clear, concise, and compassionate.
-If the user sends a greeting like hello, hi, or hey, reply with: Hello, how can I help you?`;
+If the user sends a greeting like hello, hi, or hey, reply with: Hello, how can I help you?
+When the answer is based on retrieved health data, explain the relevant steps and end with one useful follow-up question only when more information is needed.`;
 
 const chatForm   = document.querySelector('.chat-input');
 const chatInput  = document.getElementById('assistant-message');
@@ -122,7 +123,7 @@ const conversationHistory = [];
 let recognition;
 let isListening = false;
 let isAwaitingResponse = false;
-let autoSpeakReplies = synthesisSupported;
+let autoSpeakReplies = false;
 let availableVoices = [];
 let recognitionStartTimer;
 
@@ -193,8 +194,8 @@ function speakReply(text) {
         utterance.lang = preferredVoice.lang;
     }
 
-    utterance.rate = 1.32;
-    utterance.pitch = 1;
+    utterance.rate = 0.9;
+    utterance.pitch = 1.2;
     window.speechSynthesis.speak(utterance);
 }
 
@@ -601,7 +602,11 @@ async function sendToAssistantLive(userText) {
 
 async function sendToAssistant(userText) {
     const hospitalReply = tryHospitalReply(userText);
-    if (hospitalReply !== null) return hospitalReply;
+    if (hospitalReply !== null) {
+        conversationHistory.push({ role: 'user', parts: [{ text: userText }] });
+        conversationHistory.push({ role: 'model', parts: [{ text: hospitalReply }] });
+        return hospitalReply;
+    }
     return sendToAssistantLive(userText);
 }
 

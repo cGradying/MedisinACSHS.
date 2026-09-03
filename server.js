@@ -17,6 +17,7 @@ const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen3.5:0.8b';
 // smaller window is plenty and keeps the process under ~1GB.
 const OLLAMA_NUM_CTX = Number(process.env.OLLAMA_NUM_CTX) || 1024;
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
+const MAX_HISTORY_MESSAGES = 8;
 
 function isAdmin(req) {
     if (!ADMIN_TOKEN) return false;
@@ -94,17 +95,32 @@ async function handleChat(req, res) {
     const lastUserText = [...contents].reverse()
         .find((c) => c?.role !== 'model')?.parts?.map((p) => p?.text || '').join('\n') || '';
 
-    const matches = rag.topChunks(lastUserText, 3);
+    const matches = rag.topChunks(lastUserText, 4);
+    const isGreeting = /^(hello|hi|hey)([!?,.\s]|$)/i.test(lastUserText.trim());
+    if (!matches.length && !isGreeting) {
+        return sendJson(res, 200, {
+            reply: 'I do not have that information in my health-information dataset yet. Please ask about a topic covered by the uploaded documents, or call 911 and tell an adult if this is urgent.'
+        });
+    }
+
     const contextBlock = matches.length
-        ? 'CONTEXT (use this to answer if relevant):\n' + matches.map((m) => `- ${m.text}`).join('\n')
-        : 'CONTEXT: (no matching entry in the health-info dataset)';
+        ? 'RETRIEVED HEALTH DATA (the only factual source you may use):\n' + matches.map((m) => `[Source: ${m.source}] ${m.text}`).join('\n')
+        : 'RETRIEVED HEALTH DATA: (no matching entry in the health-info dataset)';
+    const prompt = `${systemText}
+
+You are a grounded healthcare information assistant, not a diagnosing clinician.
+Use the retrieved health data as your factual source. Do not invent, extrapolate, or fill gaps from general model knowledge.
+If the data does not answer the user's question, say so plainly and give only the urgent-safety instruction already provided.
+Give concise, ordered steps when the data supports them. Preserve important warnings, limits, timing, dosages, contraindications, and escalation instructions from the data.
+Ask at most one short follow-up question when the answer depends on missing information. Do not ask a follow-up for a clear emergency; direct the user to emergency help first.
+${contextBlock}`;
 
     const messages = [
         {
             role: 'system',
-            content: `${systemText}\n\n${contextBlock}\n\nAnswer using the CONTEXT above when it's relevant. If it doesn't cover the question, say you don't have that specific information and suggest calling 911 or telling an adult if it sounds urgent. Do not invent medical advice not grounded in the CONTEXT.`
+            content: prompt
         },
-        ...contents.map((c) => ({
+        ...contents.slice(-MAX_HISTORY_MESSAGES).map((c) => ({
             role: c?.role === 'model' ? 'assistant' : 'user',
             content: (c?.parts || []).map((p) => p?.text || '').join('\n').trim()
         })).filter((m) => m.content)

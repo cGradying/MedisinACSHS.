@@ -13,7 +13,8 @@ const crypto = require('crypto');
 const STORE_DIR = path.join(__dirname, 'rag-store');
 const MANIFEST_PATH = path.join(STORE_DIR, 'manifest.json');
 const ALLOWED_EXT = new Set(['.txt', '.md', '.pdf']);
-const CHUNK_SIZE = 800; // chars; small enough for a 0.8B model's short context
+const CHUNK_SIZE = 900;
+const CHUNK_OVERLAP = 120;
 
 function normalize(str) {
     return String(str || '')
@@ -33,8 +34,12 @@ const STOPWORDS = new Set([
     'a', 'an', 'the', 'is', 'are', 'am', 'it', 'to', 'of', 'in', 'on',
     'and', 'for', 'with', 'my', 'your', 'his', 'her', 'their', 'our',
     'has', 'have', 'had', 'you', 'i', 'me', 'we', 'do', 'did', 'does',
-    'this', 'that', 'these', 'those', 'be', 'was', 'were'
+    'this', 'that', 'these', 'those', 'be', 'was', 'were', 'what', 'which',
+    'who', 'where', 'when', 'why', 'how', 'can', 'could', 'would', 'should',
+    'will', 'please', 'help', 'need', 'want'
 ]);
+
+const MIN_MATCH_SCORE = 2;
 
 function ensureStore() {
     fs.mkdirSync(STORE_DIR, { recursive: true });
@@ -61,10 +66,27 @@ function listDocs() {
 // scorer — no need for sentence-aware splitting here.
 function chunkText(text) {
     const chunks = [];
-    const paragraphs = String(text || '').split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+    const paragraphs = String(text || '')
+        .replace(/\r\n?/g, '\n')
+        .split(/\n\s*\n/)
+        .map((p) => p.replace(/\s+/g, ' ').trim())
+        .filter(Boolean);
     for (const para of paragraphs) {
-        for (let i = 0; i < para.length; i += CHUNK_SIZE) {
-            chunks.push(para.slice(i, i + CHUNK_SIZE));
+        if (para.length <= CHUNK_SIZE) {
+            chunks.push(para);
+            continue;
+        }
+
+        let start = 0;
+        while (start < para.length) {
+            let end = Math.min(start + CHUNK_SIZE, para.length);
+            if (end < para.length) {
+                const boundary = para.lastIndexOf(' ', end);
+                if (boundary > start + CHUNK_SIZE / 2) end = boundary;
+            }
+            chunks.push(para.slice(start, end).trim());
+            if (end === para.length) break;
+            start = Math.max(end - CHUNK_OVERLAP, start + 1);
         }
     }
     return chunks;
@@ -112,21 +134,16 @@ function deleteDoc(id) {
 
 function scoreChunk(chunkTokens, queryTokens) {
     let score = 0;
-    for (const t of queryTokens) if (chunkTokens.has(t)) score += 1;
+    for (const t of queryTokens) {
+        if (chunkTokens.has(t)) score += t.length >= 5 ? 2 : 1;
+    }
     return score;
 }
 
-// ponytail: re-reads and re-chunks every stored doc on every request — fine
-// for a handful of admin-uploaded files on a single-user local server;
-// switch to an in-memory cache invalidated by manifest mtime if the doc
-// count or request rate ever makes this show up.
-function topChunks(query, n) {
-    const normalizedQuery = normalize(query);
-    const queryTokens = new Set(normalizedQuery.split(' ').filter((w) => w && !STOPWORDS.has(w)));
-    if (queryTokens.size === 0) return [];
+let indexCache = { signature: '', chunks: [] };
 
-    const manifest = readManifest();
-    const scored = [];
+function buildIndex(manifest) {
+    const chunks = [];
     for (const [id, meta] of Object.entries(manifest)) {
         const filePath = path.join(STORE_DIR, `${id}.txt`);
         let text;
@@ -134,10 +151,31 @@ function topChunks(query, n) {
         catch { continue; }
 
         for (const chunk of chunkText(text)) {
-            const chunkTokens = new Set(normalize(chunk).split(' ').filter(Boolean));
-            const score = scoreChunk(chunkTokens, queryTokens);
-            if (score > 0) scored.push({ score, text: chunk, source: meta.originalName });
+            chunks.push({
+                tokens: new Set(normalize(chunk).split(' ').filter(Boolean)),
+                text: chunk,
+                source: meta.originalName
+            });
         }
+    }
+    return chunks;
+}
+
+function topChunks(query, n) {
+    const normalizedQuery = normalize(query);
+    const queryTokens = new Set(normalizedQuery.split(' ').filter((w) => w && !STOPWORDS.has(w)));
+    if (queryTokens.size === 0) return [];
+
+    const manifest = readManifest();
+    const signature = JSON.stringify(Object.entries(manifest).map(([id, meta]) => [id, meta.chars, meta.uploadedAt]));
+    if (indexCache.signature !== signature) {
+        indexCache = { signature, chunks: buildIndex(manifest) };
+    }
+
+    const scored = [];
+    for (const chunk of indexCache.chunks) {
+        const score = scoreChunk(chunk.tokens, queryTokens);
+        if (score >= MIN_MATCH_SCORE) scored.push({ score, text: chunk.text, source: chunk.source });
     }
 
     return scored.sort((a, b) => b.score - a.score).slice(0, n || 3);
