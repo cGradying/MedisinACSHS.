@@ -148,6 +148,11 @@ function buildEmotionalSupportReply(userText, history = []) {
     return `${reflection} You do not have to solve everything at once.\n\nTake one slow breath, relax your shoulders, and choose one small next step. Be kind to yourself: feeling stressed or anxious does not mean you are failing. If you can, contact a trusted adult, family member, school counselor, or healthcare professional.\n\n${question}`;
 }
 
+function buildDefaultRagReply(matches) {
+    const facts = [...new Set(matches.map((match) => match.text.trim()))].slice(0, 2);
+    return `Based on the MedisinACSHS medkit reference:\n\n${facts.join('\n\n')}\n\nFollow the product label and seek professional help if the injury is severe or worsening.`;
+}
+
 async function handleChat(req, res) {
     let body;
     try { body = await readBody(req, MAX_CHAT_BODY_BYTES); }
@@ -182,6 +187,10 @@ async function handleChat(req, res) {
 
     if (matches.some((match) => match.source === 'emotional-support.md') && !isGreeting) {
         return sendJson(res, 200, { reply: buildEmotionalSupportReply(lastUserText, contents) });
+    }
+
+    if (matches.length && matches.every((match) => match.source === 'medkit-inventory.md')) {
+        return sendJson(res, 200, { reply: buildDefaultRagReply(matches) });
     }
 
     const contextBlock = matches.length
