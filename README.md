@@ -115,6 +115,7 @@ The server supports these environment variables:
 | `OLLAMA_URL` | `http://localhost:11434/api/chat` | Ollama chat endpoint |
 | `OLLAMA_MODEL` | `qwen3.5:0.8b` | Model name shown by `ollama list` |
 | `OLLAMA_NUM_CTX` | `1024` | Ollama context window |
+| `OLLAMA_TEMPERATURE` | `0.15` | Response creativity; lower values are more consistent |
 | `ADMIN_TOKEN` | unset | Required token for admin routes |
 
 Example with all commonly changed settings:

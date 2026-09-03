@@ -16,6 +16,7 @@ const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen3.5:0.8b';
 // Ollama past ~2.9GB. Chat here is short (system prompt + few turns), so a
 // smaller window is plenty and keeps the process under ~1GB.
 const OLLAMA_NUM_CTX = Number(process.env.OLLAMA_NUM_CTX) || 1024;
+const OLLAMA_TEMPERATURE = Number(process.env.OLLAMA_TEMPERATURE) || 0.15;
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
 const MAX_HISTORY_MESSAGES = 8;
 
@@ -81,6 +82,16 @@ function readBody(req, maxBytes) {
     });
 }
 
+function buildEmotionalSupportReply(userText) {
+    const normalized = userText.toLowerCase();
+    const crisis = /\b(suicide|suicidal|kill myself|self harm|self-harm|hurt myself|hurt someone|end my life|don't want to live)\b/.test(normalized);
+    if (crisis) {
+        return 'I am sorry you are facing this, and your safety matters. **Are you in immediate danger, or have you already hurt yourself or someone else?**\n\nIf yes, call **911** now, go to the nearest emergency department, and tell a trusted adult who can stay with you. Move away from anything you could use to cause harm and stay with another person.';
+    }
+
+    return 'That sounds really difficult. Your feelings matter, and you do not have to handle everything at once.\n\nFor one small next step, move somewhere calmer, take a slow breath, and contact a trusted adult, family member, school counselor, or healthcare professional.\n\n**What feels hardest right now?**';
+}
+
 async function handleChat(req, res) {
     let body;
     try { body = await readBody(req, MAX_CHAT_BODY_BYTES); }
@@ -103,6 +114,10 @@ async function handleChat(req, res) {
         });
     }
 
+    if (matches.some((match) => match.source === 'emotional-support.md') && !isGreeting) {
+        return sendJson(res, 200, { reply: buildEmotionalSupportReply(lastUserText) });
+    }
+
     const contextBlock = matches.length
         ? 'RETRIEVED HEALTH DATA (the only factual source you may use):\n' + matches.map((m) => `[Source: ${m.source}] ${m.text}`).join('\n')
         : 'RETRIEVED HEALTH DATA: (no matching entry in the health-info dataset)';
@@ -113,6 +128,7 @@ Use the retrieved health data as your factual source. Do not invent, extrapolate
 If the data does not answer the user's question, say so plainly and give only the urgent-safety instruction already provided.
 Give concise, ordered steps when the data supports them. Preserve important warnings, limits, timing, dosages, contraindications, and escalation instructions from the data.
 Ask at most one short follow-up question when the answer depends on missing information. Do not ask a follow-up for a clear emergency; direct the user to emergency help first.
+When the retrieved data is about emotional support, use this short structure: acknowledge the feeling, offer one small next step, then ask one complete gentle question. Ask whether the person is safe when appropriate. Never pretend to be human, say that you are physically present, tell the person to reassure you, or say "tell me that I am here". Treat mentions of self-harm, suicide, violence, or immediate danger as urgent and direct the person to 911, emergency care, and a trusted adult.
 ${contextBlock}`;
 
     const messages = [
@@ -133,7 +149,7 @@ ${contextBlock}`;
             // think:false — qwen3.5 is a hybrid reasoning model; left on, it burns
             // the whole output budget on its internal chain-of-thought and hits
             // done_reason:"length" before ever writing message.content.
-            body: JSON.stringify({ model: OLLAMA_MODEL, stream: false, think: false, messages, options: { num_ctx: OLLAMA_NUM_CTX } })
+            body: JSON.stringify({ model: OLLAMA_MODEL, stream: false, think: false, messages, options: { num_ctx: OLLAMA_NUM_CTX, temperature: OLLAMA_TEMPERATURE, top_p: 0.8, repeat_penalty: 1.1, num_predict: 350 } })
         });
 
         if (!ollamaRes.ok) {
