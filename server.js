@@ -96,7 +96,7 @@ function isCrisisMessage(userText) {
 
 const INTENT_TERMS = {
     emergency: ['emergency', 'urgent', '911', 'unconscious', 'not breathing', 'cannot breathe', 'can t breathe', 'chest pain', 'severe bleeding', 'heavy bleeding', 'stroke'],
-    emotional_support: ['sad', 'scared', 'afraid', 'anxious', 'anxiety', 'overwhelmed', 'alone', 'lonely', 'upset', 'stressed', 'crying', 'grief', 'worried', 'panic', 'too much', 'everything on me', 'pressure', 'can t cope', 'need support', 'talk to me', 'can you talk', 'listen to me', 'emotional support'],
+    emotional_support: ['sad', 'scared', 'afraid', 'anxious', 'anxiety', 'overwhelmed', 'alone', 'lonely', 'upset', 'stressed', 'crying', 'grief', 'grieving', 'mourning', 'died', 'death', 'passed away', 'lost my', 'dog died', 'cat died', 'pet died', 'worried', 'panic', 'too much', 'everything on me', 'pressure', 'can t cope', 'need support', 'talk to me', 'can you talk', 'listen to me', 'emotional support'],
     wound_care: ['wound', 'cut', 'scrape', 'bleeding', 'blood', 'gauze', 'bandage', 'antiseptic', 'saline', 'splinter'],
     burn_care: ['burn', 'scald', 'hot water', 'chemical burn', 'electrical burn', 'non stick dressing'],
     injury_support: ['sprain', 'strain', 'swelling', 'swollen', 'puffy', 'twisted ankle', 'turned ankle', 'hurt ankle', 'bruise', 'bump', 'cold pack', 'cold compress', 'elastic bandage', 'sling'],
@@ -138,6 +138,9 @@ function buildEmotionalSupportReply(userText, history = []) {
     const hasFollowedUp = history.some((message) => message.role === 'model');
     if (/\b(can you talk|talk to me|listen to me)\b/i.test(cleanedText)) {
         return 'Yes, we can talk. I will listen without judging you. You can start with whatever feels easiest, even if it is only a few words.\n\n**What is happening for you right now?**';
+    }
+    if (/\b(died|death|passed away|lost my|grieving|grief|mourning)\b/i.test(cleanedText)) {
+        return `I am sorry about your loss. Losing someone or a beloved pet can hurt deeply, and there is no single right way to grieve.\n\nBe gentle with yourself today. You could remember them by talking with someone you trust, looking at a favorite photo, or taking a quiet moment.\n\n**Would you like to tell me about them, or would you rather have quiet support right now?**`;
     }
     const reflection = cleanedText.length <= 90
         ? `It sounds like **${cleanedText.toLowerCase()}** is weighing on you.`
