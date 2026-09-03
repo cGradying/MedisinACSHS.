@@ -94,6 +94,21 @@ function isCrisisMessage(userText) {
         && /\b(myself|my self|me|my life|dead|die|dying)\b/.test(normalized);
 }
 
+function detectEmotionalState(userText) {
+    const normalized = String(userText).toLowerCase();
+    const states = [
+        ['grief', ['died', 'death', 'passed away', 'lost my', 'grieving', 'grief', 'mourning']],
+        ['panic', ['panic attack', 'panicking', 'cannot calm down', 'can t calm down', 'heart is racing', 'hard to breathe']],
+        ['anxiety', ['anxious', 'anxiety', 'worried', 'worrying', 'nervous', 'scared', 'afraid']],
+        ['loneliness', ['alone', 'lonely', 'no one', 'nobody', 'isolated', 'left out']],
+        ['anger', ['angry', 'furious', 'mad', 'rage', 'irritated', 'annoyed']],
+        ['shame', ['ashamed', 'embarrassed', 'humiliated', 'worthless', 'failure']],
+        ['frustration', ['frustrated', 'frustrating', 'fed up', 'stuck', 'cannot handle', 'can t handle']],
+        ['overwhelm', ['overwhelmed', 'too much', 'everything on me', 'under pressure', 'stressed', 'stress']]
+    ];
+    return states.find(([, terms]) => terms.some((term) => normalized.includes(term)))?.[0] || 'general';
+}
+
 const INTENT_TERMS = {
     emergency: ['emergency', 'urgent', '911', 'unconscious', 'not breathing', 'cannot breathe', 'can t breathe', 'chest pain', 'severe bleeding', 'heavy bleeding', 'stroke'],
     emotional_support: ['sad', 'scared', 'afraid', 'anxious', 'anxiety', 'overwhelmed', 'alone', 'lonely', 'upset', 'stressed', 'crying', 'grief', 'grieving', 'mourning', 'died', 'death', 'passed away', 'lost my', 'dog died', 'cat died', 'pet died', 'worried', 'panic', 'too much', 'everything on me', 'pressure', 'can t cope', 'need support', 'talk to me', 'can you talk', 'listen to me', 'emotional support'],
@@ -142,13 +157,24 @@ function buildEmotionalSupportReply(userText, history = []) {
     if (/\b(died|death|passed away|lost my|grieving|grief|mourning)\b/i.test(cleanedText)) {
         return `I am sorry about your loss. Losing someone or a beloved pet can hurt deeply, and there is no single right way to grieve.\n\nBe gentle with yourself today. You could remember them by talking with someone you trust, looking at a favorite photo, or taking a quiet moment.\n\n**Would you like to tell me about them, or would you rather have quiet support right now?**`;
     }
+    const state = detectEmotionalState(cleanedText);
+    const stateGuidance = {
+        panic: 'Try placing both feet on the floor and taking a slow breath out longer than you breathe in.',
+        anxiety: 'Name one thing you can control in the next few minutes and let the rest wait for now.',
+        loneliness: 'If possible, send a simple message to someone safe, such as "Can we talk for a few minutes?"',
+        anger: 'Give yourself a little space before responding, and try a slow breath or a short walk.',
+        shame: 'A difficult moment does not define your worth. Speak to yourself as gently as you would speak to someone you care about.',
+        frustration: 'Pause and choose the smallest part of the problem that you can handle first.',
+        overwhelm: 'You do not have to solve everything at once. Choose one small next step.',
+        general: 'Take one slow breath and focus on what you need in this moment.'
+    }[state];
     const reflection = cleanedText.length <= 90
         ? `It sounds like **${cleanedText.toLowerCase()}** is weighing on you.`
         : 'It sounds like you are carrying a lot right now.';
     const question = hasFollowedUp
         ? '**Would it help to talk about what happened, or would you rather focus on calming down first?**'
         : '**What part of this feels heaviest right now?**';
-    return `${reflection} You do not have to solve everything at once.\n\nTake one slow breath, relax your shoulders, and choose one small next step. Be kind to yourself: feeling stressed or anxious does not mean you are failing. If you can, contact a trusted adult, family member, school counselor, or healthcare professional.\n\n${question}`;
+    return `${reflection}\n\n${stateGuidance} Be kind to yourself; this feeling does not define you. If you can, contact a trusted adult, family member, school counselor, or healthcare professional.\n\n${question}`;
 }
 
 function buildDefaultRagReply(matches) {
