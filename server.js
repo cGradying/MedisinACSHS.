@@ -12,6 +12,10 @@ const { topMatches } = require('./data/qa-retrieve.js');
 const PORT = process.env.PORT || 3000;
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434/api/chat';
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen3.5:0.8b';
+// KV-cache RAM scales with this; default context window is what was pushing
+// Ollama past ~2.9GB. Chat here is short (system prompt + few turns), so a
+// smaller window is plenty and keeps the process under ~1GB.
+const OLLAMA_NUM_CTX = Number(process.env.OLLAMA_NUM_CTX) || 1024;
 
 const MIME = {
     '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css',
@@ -99,7 +103,10 @@ async function handleChat(req, res) {
         const ollamaRes = await fetch(OLLAMA_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model: OLLAMA_MODEL, stream: false, messages })
+            // think:false — qwen3.5 is a hybrid reasoning model; left on, it burns
+            // the whole output budget on its internal chain-of-thought and hits
+            // done_reason:"length" before ever writing message.content.
+            body: JSON.stringify({ model: OLLAMA_MODEL, stream: false, think: false, messages, options: { num_ctx: OLLAMA_NUM_CTX } })
         });
 
         if (!ollamaRes.ok) {
