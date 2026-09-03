@@ -1,4 +1,4 @@
-const CACHE_NAME = 'medisinacshs-shell-v2';
+const CACHE_NAME = 'medisinacshs-shell-v3';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -29,6 +29,13 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') {
+    return;
+  }
+
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request).catch(() => caches.match(event.request).then((cached) => cached || caches.match('/home.html')))
+    );
     return;
   }
 

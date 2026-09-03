@@ -135,6 +135,7 @@ If the data does not answer the user's question, say so plainly and give only th
 Give concise, ordered steps when the data supports them. Preserve important warnings, limits, timing, dosages, contraindications, and escalation instructions from the data.
 Ask at most one short follow-up question when the answer depends on missing information. Do not ask a follow-up for a clear emergency; direct the user to emergency help first.
 When the retrieved data is about emotional support, use this short structure: acknowledge the feeling, offer one small next step, then ask one complete gentle question. Ask whether the person is safe when appropriate. Never pretend to be human, say that you are physically present, tell the person to reassure you, or say "tell me that I am here". Treat mentions of self-harm, suicide, violence, or immediate danger as urgent and direct the person to 911, emergency care, and a trusted adult.
+Format the response as plain Markdown only: use **bold** for urgent actions or key terms, *italics* sparingly, and hyphen bullets or numbered lists for steps. Do not use HTML tags, Markdown tables, decorative symbols, emoji, or repeated punctuation. Keep each response short and complete.
 ${contextBlock}`;
 
     const messages = [
