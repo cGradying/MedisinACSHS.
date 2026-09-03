@@ -15,27 +15,48 @@ const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen3.5:0.8b';
 
 const MIME = {
     '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css',
-    '.json': 'application/json', '.png': 'image/png', '.webmanifest': 'application/manifest+json'
+    '.png': 'image/png', '.webmanifest': 'application/manifest+json'
 };
 
 function serveStatic(req, res) {
-    const urlPath = decodeURIComponent(req.url.split('?')[0]);
+    let urlPath;
+    try { urlPath = decodeURIComponent(req.url.split('?')[0]); }
+    catch { return res.writeHead(400).end('Bad request'); }
+
+    // Block dotfiles/dot-dirs (.git, .env, .claude, ...) and anything not in
+    // the MIME allowlist, so the static server can't be used to read source
+    // or config files off the disk — only the site's own known asset types.
+    if (urlPath.split('/').some((seg) => seg.startsWith('.'))) return res.writeHead(403).end('Forbidden');
+
     const filePath = path.join(__dirname, urlPath === '/' ? 'index.html' : urlPath);
     const root = __dirname + path.sep;
     if (filePath !== __dirname && !filePath.startsWith(root)) return res.writeHead(403).end('Forbidden');
 
+    const ext = path.extname(filePath);
+    if (!MIME[ext]) return res.writeHead(404).end('Not found');
+
     fs.readFile(filePath, (err, data) => {
         if (err) return res.writeHead(404).end('Not found');
-        const ext = path.extname(filePath);
-        res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream' });
+        res.writeHead(200, { 'Content-Type': MIME[ext] });
         res.end(data);
     });
 }
 
+const MAX_BODY_BYTES = 64 * 1024; // chat messages are short; reject anything absurd
+
 function readBody(req) {
     return new Promise((resolve, reject) => {
         let raw = '';
-        req.on('data', (chunk) => { raw += chunk; });
+        let bytes = 0;
+        req.on('data', (chunk) => {
+            bytes += chunk.length;
+            if (bytes > MAX_BODY_BYTES) {
+                reject(new Error('Body too large'));
+                req.destroy();
+                return;
+            }
+            raw += chunk;
+        });
         req.on('end', () => {
             try { resolve(raw ? JSON.parse(raw) : {}); }
             catch (e) { reject(e); }
