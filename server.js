@@ -21,7 +21,8 @@ const MIME = {
 function serveStatic(req, res) {
     const urlPath = decodeURIComponent(req.url.split('?')[0]);
     const filePath = path.join(__dirname, urlPath === '/' ? 'index.html' : urlPath);
-    if (!filePath.startsWith(__dirname)) return res.writeHead(403).end('Forbidden');
+    const root = __dirname + path.sep;
+    if (filePath !== __dirname && !filePath.startsWith(root)) return res.writeHead(403).end('Forbidden');
 
     fs.readFile(filePath, (err, data) => {
         if (err) return res.writeHead(404).end('Not found');
